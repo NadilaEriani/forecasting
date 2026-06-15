@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import "./App.css";
@@ -10,12 +11,20 @@ const jenisKendaraanList = [
   { label: "Sepeda Motor", value: "sepeda_motor", short: "Motor" },
 ];
 
-const kolomKendaraan = [
-  "mobil_penumpang",
-  "bus",
-  "truk",
-  "sepeda_motor",
-  "total_kendaraan",
+const kolomInputKendaraan = [
+  { name: "mobil_penumpang", label: "Mobil Penumpang" },
+  { name: "bus", label: "Bus" },
+  { name: "truk", label: "Truk" },
+  { name: "sepeda_motor", label: "Sepeda Motor" },
+];
+
+const halamanList = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "forecasting", label: "Forecasting" },
+  { id: "data", label: "Data" },
+  { id: "evaluasi", label: "Evaluasi" },
+  { id: "input", label: "Input" },
+  { id: "tentang", label: "Tentang" },
 ];
 
 function formatAngka(nilai) {
@@ -25,6 +34,8 @@ function formatAngka(nilai) {
 
 function formatCompact(nilai) {
   const angka = Number(nilai || 0);
+
+  if (!Number.isFinite(angka)) return "0";
 
   if (angka >= 1_000_000_000_000) {
     return `${(angka / 1_000_000_000_000).toFixed(1)} T`;
@@ -43,17 +54,50 @@ function formatCompact(nilai) {
 
 function formatPersen(nilai) {
   const angka = Number(nilai || 0);
-  if (!Number.isFinite(angka)) return "0,00%";
+
+  if (!Number.isFinite(angka)) {
+    return "0,00%";
+  }
+
   return `${angka.toLocaleString("id-ID", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}%`;
 }
 
-function normalisasiNamaKolom(nilai) {
+function labelJenis(nilai) {
+  const cocok = jenisKendaraanList.find((item) => item.value === nilai);
+
+  if (cocok) {
+    return cocok.label;
+  }
+
   return String(nilai || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (huruf) => huruf.toUpperCase());
+}
+
+function angkaInput(nilai) {
+  const angka = Number(nilai || 0);
+  return Number.isFinite(angka) ? angka : 0;
+}
+
+function buatPayloadKendaraan(form, status) {
+  const mobilPenumpang = Math.round(angkaInput(form.mobil_penumpang));
+  const bus = Math.round(angkaInput(form.bus));
+  const truk = Math.round(angkaInput(form.truk));
+  const sepedaMotor = Math.round(angkaInput(form.sepeda_motor));
+
+  return {
+    provinsi: String(form.provinsi || "").trim(),
+    tahun: Math.round(angkaInput(form.tahun)),
+    status,
+    mobil_penumpang: mobilPenumpang,
+    bus,
+    truk,
+    sepeda_motor: sepedaMotor,
+    total_kendaraan: mobilPenumpang + bus + truk + sepedaMotor,
+  };
 }
 
 function totalPerTahun(data, kolom) {
@@ -62,7 +106,10 @@ function totalPerTahun(data, kolom) {
   data.forEach((item) => {
     const tahun = Number(item.tahun);
     const nilai = Number(item[kolom] || 0);
-    map.set(tahun, (map.get(tahun) || 0) + nilai);
+
+    if (Number.isFinite(tahun)) {
+      map.set(tahun, (map.get(tahun) || 0) + nilai);
+    }
   });
 
   return Array.from(map, ([tahun, nilai]) => ({ tahun, nilai })).sort(
@@ -70,29 +117,78 @@ function totalPerTahun(data, kolom) {
   );
 }
 
+function totalKendaraanForm(form) {
+  return kolomInputKendaraan.reduce(
+    (total, kolom) => total + angkaInput(form[kolom.name]),
+    0,
+  );
+}
+
 function ambilNilaiMaksimal(series) {
   const semuaNilai = series.flatMap((item) =>
-    item.data.map((data) => data.nilai),
+    item.data.map((data) => Number(data.nilai || 0)),
   );
+
   return Math.max(...semuaNilai, 1);
 }
 
-function TrendChart({ aktual, prediksi }) {
-  const width = 920;
-  const height = 320;
-  const paddingX = 54;
-  const paddingY = 42;
+function gabungPerProvinsi(data, kolom = "total_kendaraan") {
+  const map = new Map();
 
-  const semuaTahun = [...aktual, ...prediksi].map((item) => item.tahun);
-  const minTahun = Math.min(...semuaTahun, new Date().getFullYear());
-  const maxTahun = Math.max(...semuaTahun, new Date().getFullYear());
+  data.forEach((item) => {
+    const provinsi = item.provinsi || "Tidak diketahui";
+    const nilai = Number(item[kolom] || 0);
+    map.set(provinsi, (map.get(provinsi) || 0) + nilai);
+  });
+
+  return Array.from(map, ([provinsi, nilai]) => ({ provinsi, nilai })).sort(
+    (a, b) => b.nilai - a.nilai,
+  );
+}
+
+function agregasiKendaraan(data) {
+  return data.reduce(
+    (hasil, item) => {
+      kolomInputKendaraan.forEach((kolom) => {
+        hasil[kolom.name] += Number(item[kolom.name] || 0);
+      });
+
+      hasil.total_kendaraan += Number(item.total_kendaraan || 0);
+      return hasil;
+    },
+    {
+      mobil_penumpang: 0,
+      bus: 0,
+      truk: 0,
+      sepeda_motor: 0,
+      total_kendaraan: 0,
+    },
+  );
+}
+
+function TrendChart({ aktual, prediksi }) {
+  const width = 980;
+  const height = 340;
+  const paddingX = 58;
+  const paddingY = 44;
+
+  const semuaTahun = [...aktual, ...prediksi]
+    .map((item) => Number(item.tahun))
+    .filter(Number.isFinite);
+
+  const tahunSekarang = new Date().getFullYear();
+  const minTahun = Math.min(...semuaTahun, tahunSekarang);
+  const maxTahun = Math.max(...semuaTahun, tahunSekarang);
   const maxNilai = ambilNilaiMaksimal([
     { label: "Aktual", data: aktual },
     { label: "Prediksi", data: prediksi },
   ]);
 
   function getX(tahun) {
-    if (minTahun === maxTahun) return width / 2;
+    if (minTahun === maxTahun) {
+      return width / 2;
+    }
+
     return (
       paddingX +
       ((tahun - minTahun) / (maxTahun - minTahun)) * (width - paddingX * 2)
@@ -119,7 +215,11 @@ function TrendChart({ aktual, prediksi }) {
   const tahunLabel = Array.from(new Set(semuaTahun)).sort((a, b) => a - b);
 
   if (!aktual.length && !prediksi.length) {
-    return <div className="empty-state">Belum ada data untuk grafik.</div>;
+    return (
+      <div className="empty-state">
+        Belum ada data untuk grafik. Pastikan data Supabase sudah terisi.
+      </div>
+    );
   }
 
   return (
@@ -131,17 +231,18 @@ function TrendChart({ aktual, prediksi }) {
       >
         <defs>
           <linearGradient id="areaAktual" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.22" />
+            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.24" />
             <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="areaPrediksi" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.24" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
           </linearGradient>
         </defs>
 
         {[0, 0.25, 0.5, 0.75, 1].map((rasio) => {
           const y = paddingY + rasio * (height - paddingY * 2);
+
           return (
             <g key={rasio}>
               <line
@@ -187,7 +288,7 @@ function TrendChart({ aktual, prediksi }) {
                 key={`aktual-${item.tahun}`}
                 cx={getX(item.tahun)}
                 cy={getY(item.nilai)}
-                r="4"
+                r="4.5"
                 className="dot-actual"
               />
             ))}
@@ -210,7 +311,7 @@ function TrendChart({ aktual, prediksi }) {
                 key={`prediksi-${item.tahun}`}
                 cx={getX(item.tahun)}
                 cy={getY(item.nilai)}
-                r="4"
+                r="4.5"
                 className="dot-forecast"
               />
             ))}
@@ -222,37 +323,34 @@ function TrendChart({ aktual, prediksi }) {
 }
 
 function CompositionBars({ data }) {
-  const jenis = jenisKendaraanList.filter(
-    (item) => item.value !== "total_kendaraan",
-  );
-  const total = jenis.reduce(
-    (sum, item) => sum + Number(data?.[item.value] || 0),
+  const total = kolomInputKendaraan.reduce(
+    (sum, item) => sum + Number(data?.[item.name] || 0),
     0,
   );
 
   if (!data || total === 0) {
     return (
       <div className="empty-state compact">
-        Pilih provinsi untuk melihat komposisi kendaraan.
+        Belum ada komposisi kendaraan untuk filter ini.
       </div>
     );
   }
 
   return (
     <div className="bar-list">
-      {jenis.map((item) => {
-        const nilai = Number(data[item.value] || 0);
+      {kolomInputKendaraan.map((item) => {
+        const nilai = Number(data[item.name] || 0);
         const persen = total ? (nilai / total) * 100 : 0;
 
         return (
-          <div className="bar-item" key={item.value}>
+          <div className="bar-item" key={item.name}>
             <div className="bar-info">
               <span>{item.label}</span>
               <strong>{formatCompact(nilai)}</strong>
             </div>
             <div className="bar-track">
               <div
-                className={`bar-fill ${item.value}`}
+                className={`bar-fill ${item.name}`}
                 style={{ width: `${Math.max(persen, 1)}%` }}
               />
             </div>
@@ -265,12 +363,14 @@ function CompositionBars({ data }) {
 }
 
 function App() {
+  const [halamanAktif, setHalamanAktif] = useState("dashboard");
   const [dataAktual, setDataAktual] = useState([]);
   const [dataPrediksi, setDataPrediksi] = useState([]);
   const [evaluasi, setEvaluasi] = useState([]);
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingAktual, setSavingAktual] = useState(false);
+  const [savingPrediksi, setSavingPrediksi] = useState(false);
   const [pesan, setPesan] = useState("");
   const [error, setError] = useState("");
 
@@ -278,8 +378,18 @@ function App() {
   const [filterJenis, setFilterJenis] = useState("total_kendaraan");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [pencarian, setPencarian] = useState("");
+  const [growthPrediksi, setGrowthPrediksi] = useState(5);
 
-  const [form, setForm] = useState({
+  const [formAktual, setFormAktual] = useState({
+    provinsi: "",
+    tahun: "",
+    mobil_penumpang: "",
+    bus: "",
+    truk: "",
+    sepeda_motor: "",
+  });
+
+  const [formPrediksi, setFormPrediksi] = useState({
     provinsi: "",
     tahun: "",
     mobil_penumpang: "",
@@ -336,6 +446,7 @@ function App() {
     const semua = [...dataAktual, ...dataPrediksi]
       .map((item) => item.provinsi)
       .filter(Boolean);
+
     return [
       "Semua",
       ...Array.from(new Set(semua)).sort((a, b) => a.localeCompare(b)),
@@ -357,180 +468,211 @@ function App() {
     }
 
     if (pencarian.trim()) {
-      const kata = pencarian.trim().toLowerCase();
+      const keyword = pencarian.toLowerCase();
       gabungan = gabungan.filter((item) =>
-        `${item.provinsi} ${item.tahun} ${item.status}`
+        `${item.provinsi} ${item.tahun} ${item.status} ${item.sumber}`
           .toLowerCase()
-          .includes(kata),
+          .includes(keyword),
       );
     }
 
     return gabungan.sort((a, b) => {
-      if (a.provinsi === b.provinsi) return Number(a.tahun) - Number(b.tahun);
-      return String(a.provinsi).localeCompare(String(b.provinsi));
+      const provinsi = String(a.provinsi).localeCompare(String(b.provinsi));
+      if (provinsi !== 0) return provinsi;
+      return Number(a.tahun) - Number(b.tahun);
     });
   }, [dataAktual, dataPrediksi, filterProvinsi, filterStatus, pencarian]);
 
-  const dataTersaringAktual = useMemo(() => {
-    if (filterProvinsi === "Semua") return dataAktual;
+  const dataAktualFilter = useMemo(() => {
+    if (filterProvinsi === "Semua") {
+      return dataAktual;
+    }
+
     return dataAktual.filter((item) => item.provinsi === filterProvinsi);
   }, [dataAktual, filterProvinsi]);
 
-  const dataTersaringPrediksi = useMemo(() => {
-    if (filterProvinsi === "Semua") return dataPrediksi;
+  const dataPrediksiFilter = useMemo(() => {
+    if (filterProvinsi === "Semua") {
+      return dataPrediksi;
+    }
+
     return dataPrediksi.filter((item) => item.provinsi === filterProvinsi);
   }, [dataPrediksi, filterProvinsi]);
 
-  const trenAktual = useMemo(
-    () => totalPerTahun(dataTersaringAktual, filterJenis),
-    [dataTersaringAktual, filterJenis],
+  const chartAktual = useMemo(
+    () => totalPerTahun(dataAktualFilter, filterJenis),
+    [dataAktualFilter, filterJenis],
   );
 
-  const trenPrediksi = useMemo(
-    () => totalPerTahun(dataTersaringPrediksi, filterJenis),
-    [dataTersaringPrediksi, filterJenis],
+  const chartPrediksi = useMemo(
+    () => totalPerTahun(dataPrediksiFilter, filterJenis),
+    [dataPrediksiFilter, filterJenis],
   );
 
-  const dataKomposisi = useMemo(() => {
-    const sumber = dataTersaringAktual.length
-      ? dataTersaringAktual
-      : dataAktual;
-    const tahunTerbaru = Math.max(
-      ...sumber.map((item) => Number(item.tahun || 0)),
-      0,
-    );
-    const dataTahunTerbaru = sumber.filter(
-      (item) => Number(item.tahun) === tahunTerbaru,
-    );
+  const tahunAktualTerakhir = useMemo(() => {
+    const tahun = dataAktual
+      .map((item) => Number(item.tahun))
+      .filter(Number.isFinite);
+    return tahun.length ? Math.max(...tahun) : null;
+  }, [dataAktual]);
 
-    if (!dataTahunTerbaru.length) return null;
-
-    return dataTahunTerbaru.reduce(
-      (total, item) => ({
-        mobil_penumpang:
-          total.mobil_penumpang + Number(item.mobil_penumpang || 0),
-        bus: total.bus + Number(item.bus || 0),
-        truk: total.truk + Number(item.truk || 0),
-        sepeda_motor: total.sepeda_motor + Number(item.sepeda_motor || 0),
-      }),
-      { mobil_penumpang: 0, bus: 0, truk: 0, sepeda_motor: 0 },
-    );
-  }, [dataTersaringAktual, dataAktual]);
+  const tahunPrediksiTerakhir = useMemo(() => {
+    const tahun = dataPrediksi
+      .map((item) => Number(item.tahun))
+      .filter(Number.isFinite);
+    return tahun.length ? Math.max(...tahun) : null;
+  }, [dataPrediksi]);
 
   const ringkasan = useMemo(() => {
     const totalAktual = dataAktual.reduce(
       (total, item) => total + Number(item.total_kendaraan || 0),
       0,
     );
+
     const totalPrediksi = dataPrediksi.reduce(
       (total, item) => total + Number(item.total_kendaraan || 0),
       0,
     );
-    const tahunAktual = Math.max(
-      ...dataAktual.map((item) => Number(item.tahun || 0)),
-      0,
-    );
-    const tahunPrediksi = Math.max(
-      ...dataPrediksi.map((item) => Number(item.tahun || 0)),
-      0,
-    );
-    const prediksiTerakhir = dataPrediksi
-      .filter((item) => Number(item.tahun) === tahunPrediksi)
-      .reduce((total, item) => total + Number(item.total_kendaraan || 0), 0);
-    const aktualTerakhir = dataAktual
-      .filter((item) => Number(item.tahun) === tahunAktual)
-      .reduce((total, item) => total + Number(item.total_kendaraan || 0), 0);
+
+    const jumlahProvinsi = new Set(dataAktual.map((item) => item.provinsi))
+      .size;
     const rataMape = evaluasi.length
-      ? evaluasi.reduce((total, item) => total + Number(item.mape || 0), 0) /
+      ? evaluasi.reduce((sum, item) => sum + Number(item.mape || 0), 0) /
         evaluasi.length
       : 0;
 
     return {
       totalAktual,
       totalPrediksi,
-      tahunAktual,
-      tahunPrediksi,
-      prediksiTerakhir,
-      aktualTerakhir,
+      jumlahAktual: dataAktual.length,
+      jumlahPrediksi: dataPrediksi.length,
+      jumlahProvinsi,
       rataMape,
-      jumlahProvinsi: new Set(
-        [...dataAktual, ...dataPrediksi].map((item) => item.provinsi),
-      ).size,
     };
   }, [dataAktual, dataPrediksi, evaluasi]);
 
+  const dataKomposisi = useMemo(() => {
+    let sumber = dataAktualFilter;
+
+    if (tahunAktualTerakhir) {
+      sumber = sumber.filter(
+        (item) => Number(item.tahun) === tahunAktualTerakhir,
+      );
+    }
+
+    if (filterProvinsi !== "Semua") {
+      sumber = sumber.filter((item) => item.provinsi === filterProvinsi);
+    }
+
+    return agregasiKendaraan(sumber);
+  }, [dataAktualFilter, tahunAktualTerakhir, filterProvinsi]);
+
   const topProvinsiPrediksi = useMemo(() => {
-    const tahun = ringkasan.tahunPrediksi;
-    return dataPrediksi
-      .filter((item) => Number(item.tahun) === tahun)
-      .sort(
-        (a, b) =>
-          Number(b.total_kendaraan || 0) - Number(a.total_kendaraan || 0),
-      )
-      .slice(0, 5);
-  }, [dataPrediksi, ringkasan.tahunPrediksi]);
+    let sumber = dataPrediksi;
 
-  const insight = useMemo(() => {
-    const labelJenis =
-      jenisKendaraanList.find((item) => item.value === filterJenis)?.label ||
-      "Total Kendaraan";
-    const nilaiAkhirAktual = trenAktual[trenAktual.length - 1]?.nilai || 0;
-    const nilaiAkhirPrediksi =
-      trenPrediksi[trenPrediksi.length - 1]?.nilai || 0;
-    const selisih = nilaiAkhirPrediksi - nilaiAkhirAktual;
-    const persen = nilaiAkhirAktual ? (selisih / nilaiAkhirAktual) * 100 : 0;
+    if (tahunPrediksiTerakhir) {
+      sumber = sumber.filter(
+        (item) => Number(item.tahun) === tahunPrediksiTerakhir,
+      );
+    }
 
-    return {
-      labelJenis,
-      nilaiAkhirAktual,
-      nilaiAkhirPrediksi,
-      selisih,
-      persen,
-    };
-  }, [filterJenis, trenAktual, trenPrediksi]);
+    return gabungPerProvinsi(sumber, filterJenis).slice(0, 6);
+  }, [dataPrediksi, tahunPrediksiTerakhir, filterJenis]);
 
-  function handleInputChange(e) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  const evaluasiTerurut = useMemo(() => {
+    return [...evaluasi].sort(
+      (a, b) => Number(a.mape || 0) - Number(b.mape || 0),
+    );
+  }, [evaluasi]);
+
+  const totalFormAktual = useMemo(
+    () => totalKendaraanForm(formAktual),
+    [formAktual],
+  );
+
+  const totalFormPrediksi = useMemo(
+    () => totalKendaraanForm(formPrediksi),
+    [formPrediksi],
+  );
+
+  function handleFormAktualChange(event) {
+    const { name, value } = event.target;
+    setFormAktual((prev) => ({ ...prev, [name]: value }));
   }
 
-  async function simpanDataAktual(e) {
-    e.preventDefault();
-    setPesan("");
-    setError("");
-    setSaving(true);
+  function handleFormPrediksiChange(event) {
+    const { name, value } = event.target;
+    setFormPrediksi((prev) => ({ ...prev, [name]: value }));
+  }
 
-    const mobilPenumpang = Number(form.mobil_penumpang || 0);
-    const bus = Number(form.bus || 0);
-    const truk = Number(form.truk || 0);
-    const sepedaMotor = Number(form.sepeda_motor || 0);
+  function isiPrediksiDariAktualTerakhir() {
+    const provinsiDipilih = formPrediksi.provinsi || filterProvinsi;
 
-    const dataBaru = {
-      provinsi: form.provinsi.trim(),
-      tahun: Number(form.tahun),
-      status: "Aktual",
-      mobil_penumpang: mobilPenumpang,
-      bus,
-      truk,
-      sepeda_motor: sepedaMotor,
-      total_kendaraan: mobilPenumpang + bus + truk + sepedaMotor,
-    };
-
-    const { error: insertError } = await supabase
-      .from("kendaraan_aktual")
-      .insert(dataBaru);
-
-    if (insertError) {
+    if (!provinsiDipilih || provinsiDipilih === "Semua") {
       setError(
-        "Data gagal disimpan. Pastikan policy INSERT untuk tabel kendaraan_aktual sudah aktif.",
+        "Pilih provinsi terlebih dahulu sebelum membuat prediksi cepat.",
       );
-      console.error(insertError);
-      setSaving(false);
+      setPesan("");
       return;
     }
 
-    setPesan("Data aktual berhasil disimpan ke Supabase.");
-    setForm({
+    const dataProvinsi = dataAktual
+      .filter((item) => item.provinsi === provinsiDipilih)
+      .sort((a, b) => Number(b.tahun) - Number(a.tahun));
+
+    if (!dataProvinsi.length) {
+      setError("Data aktual provinsi tersebut belum tersedia.");
+      setPesan("");
+      return;
+    }
+
+    const dataTerakhir = dataProvinsi[0];
+    const faktor = 1 + angkaInput(growthPrediksi) / 100;
+
+    setFormPrediksi({
+      provinsi: provinsiDipilih,
+      tahun: Number(dataTerakhir.tahun || 0) + 1,
+      mobil_penumpang: Math.round(
+        Number(dataTerakhir.mobil_penumpang || 0) * faktor,
+      ),
+      bus: Math.round(Number(dataTerakhir.bus || 0) * faktor),
+      truk: Math.round(Number(dataTerakhir.truk || 0) * faktor),
+      sepeda_motor: Math.round(Number(dataTerakhir.sepeda_motor || 0) * faktor),
+    });
+
+    setPesan("Prediksi cepat berhasil dihitung dari data aktual terakhir.");
+    setError("");
+  }
+
+  async function simpanDataAktual(event) {
+    event.preventDefault();
+    setSavingAktual(true);
+    setPesan("");
+    setError("");
+
+    const payload = buatPayloadKendaraan(formAktual, "Aktual");
+
+    if (!payload.provinsi || !payload.tahun) {
+      setError("Provinsi dan tahun wajib diisi.");
+      setSavingAktual(false);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("kendaraan_aktual")
+      .insert(payload);
+
+    if (insertError) {
+      setError(
+        "Gagal menyimpan data aktual. Periksa policy INSERT tabel kendaraan_aktual.",
+      );
+      console.error(insertError);
+      setSavingAktual(false);
+      return;
+    }
+
+    setPesan("Data aktual berhasil disimpan.");
+    setFormAktual({
       provinsi: "",
       tahun: "",
       mobil_penumpang: "",
@@ -538,160 +680,248 @@ function App() {
       truk: "",
       sepeda_motor: "",
     });
-
     await ambilData();
-    setSaving(false);
+    setSavingAktual(false);
   }
 
-  return (
-    <div className="dashboard">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">FK</div>
-          <div>
-            <strong>Forecasting</strong>
-            <span>Kendaraan</span>
-          </div>
+  async function simpanDataPrediksi(event) {
+    event.preventDefault();
+    setSavingPrediksi(true);
+    setPesan("");
+    setError("");
+
+    const payload = buatPayloadKendaraan(formPrediksi, "Prediksi");
+
+    if (!payload.provinsi || !payload.tahun) {
+      setError("Provinsi dan tahun prediksi wajib diisi.");
+      setSavingPrediksi(false);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("prediksi_kendaraan")
+      .insert(payload);
+
+    if (insertError) {
+      setError(
+        "Gagal menyimpan data prediksi. Periksa policy INSERT tabel prediksi_kendaraan.",
+      );
+      console.error(insertError);
+      setSavingPrediksi(false);
+      return;
+    }
+
+    setPesan("Data prediksi berhasil disimpan.");
+    setFormPrediksi({
+      provinsi: "",
+      tahun: "",
+      mobil_penumpang: "",
+      bus: "",
+      truk: "",
+      sepeda_motor: "",
+    });
+    await ambilData();
+    setSavingPrediksi(false);
+  }
+
+  function pindahHalaman(id) {
+    setHalamanAktif(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const namaFilterJenis = labelJenis(filterJenis);
+
+  function ToolbarFilter() {
+    return (
+      <section className="toolbar" aria-label="Filter data">
+        <label>
+          Provinsi
+          <select
+            value={filterProvinsi}
+            onChange={(event) => setFilterProvinsi(event.target.value)}
+          >
+            {daftarProvinsi.map((provinsi) => (
+              <option key={provinsi} value={provinsi}>
+                {provinsi}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Jenis Kendaraan
+          <select
+            value={filterJenis}
+            onChange={(event) => setFilterJenis(event.target.value)}
+          >
+            {jenisKendaraanList.map((jenis) => (
+              <option key={jenis.value} value={jenis.value}>
+                {jenis.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Status
+          <select
+            value={filterStatus}
+            onChange={(event) => setFilterStatus(event.target.value)}
+          >
+            <option value="Semua">Semua</option>
+            <option value="Aktual">Aktual</option>
+            <option value="Prediksi">Prediksi</option>
+          </select>
+        </label>
+
+        <label>
+          Cari Data
+          <input
+            value={pencarian}
+            onChange={(event) => setPencarian(event.target.value)}
+            placeholder="Cari provinsi, tahun, atau status..."
+          />
+        </label>
+      </section>
+    );
+  }
+
+  function StatGrid() {
+    return (
+      <section className="stat-grid" aria-label="Ringkasan data">
+        <div className="stat-card blue">
+          <span>Total Aktual</span>
+          <strong>{formatCompact(ringkasan.totalAktual)}</strong>
+          <p>{formatAngka(ringkasan.jumlahAktual)} baris data aktual</p>
         </div>
 
-        <nav className="side-nav">
-          <a href="#ringkasan" className="active">
-            Ringkasan
-          </a>
-          <a href="#tren">Tren Forecasting</a>
-          <a href="#data">Data Kendaraan</a>
-          <a href="#evaluasi">Evaluasi Model</a>
-          <a href="#input">Input Data</a>
-        </nav>
-
-        <div className="sidebar-card">
-          <span>Model</span>
-          <strong>LSTM</strong>
-          <p>
-            Forecasting volume kendaraan berdasarkan jenis kendaraan dan
-            provinsi.
-          </p>
+        <div className="stat-card amber">
+          <span>Total Prediksi</span>
+          <strong>{formatCompact(ringkasan.totalPrediksi)}</strong>
+          <p>{formatAngka(ringkasan.jumlahPrediksi)} baris data prediksi</p>
         </div>
-      </aside>
 
-      <main className="main-content">
-        <header className="hero" id="ringkasan">
+        <div className="stat-card green">
+          <span>Provinsi</span>
+          <strong>{formatAngka(ringkasan.jumlahProvinsi)}</strong>
+          <p>Wilayah pada data aktual</p>
+        </div>
+
+        <div className="stat-card purple">
+          <span>Rata-rata MAPE</span>
+          <strong>{formatPersen(ringkasan.rataMape)}</strong>
+          <p>Evaluasi model LSTM</p>
+        </div>
+      </section>
+    );
+  }
+
+  function TabelData({ data, limit }) {
+    const dataTampil = limit ? data.slice(0, limit) : data;
+
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Provinsi</th>
+              <th>Tahun</th>
+              <th>Status</th>
+              <th>Jenis Data</th>
+              <th>{namaFilterJenis}</th>
+              <th>Mobil</th>
+              <th>Bus</th>
+              <th>Truk</th>
+              <th>Motor</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dataTampil.map((item) => (
+              <tr key={`${item.sumber}-${item.id}`}>
+                <td>{item.provinsi}</td>
+                <td>{item.tahun}</td>
+                <td>{item.status}</td>
+                <td>
+                  <span className={`badge ${item.sumber.toLowerCase()}`}>
+                    {item.sumber}
+                  </span>
+                </td>
+                <td>{formatAngka(item[filterJenis])}</td>
+                <td>{formatAngka(item.mobil_penumpang)}</td>
+                <td>{formatAngka(item.bus)}</td>
+                <td>{formatAngka(item.truk)}</td>
+                <td>{formatAngka(item.sepeda_motor)}</td>
+                <td>{formatAngka(item.total_kendaraan)}</td>
+              </tr>
+            ))}
+
+            {!dataTampil.length && (
+              <tr>
+                <td colSpan="10" className="empty-cell">
+                  Data tidak ditemukan untuk filter ini.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  function HalamanDashboard() {
+    return (
+      <>
+        <section className="hero-section">
           <div className="hero-copy">
-            <span className="eyebrow">Dashboard Prediksi Kendaraan</span>
-            <h1>Forecasting Volume Kendaraan Indonesia</h1>
+            <span className="eyebrow">LSTM Forecasting Dashboard</span>
+            <h1>Dashboard prediksi volume kendaraan Indonesia.</h1>
             <p>
-              Pantau data aktual, prediksi masa depan, evaluasi model, dan input
-              data kendaraan dari Supabase dalam satu dashboard interaktif.
+              Pantau data aktual, hasil forecasting, evaluasi model, dan input
+              skenario prediksi dalam satu dashboard yang terhubung langsung ke
+              Supabase.
             </p>
+            <div className="hero-actions">
+              <button
+                type="button"
+                onClick={() => pindahHalaman("forecasting")}
+              >
+                Lihat Forecasting
+              </button>
+              <button
+                type="button"
+                className="button-soft"
+                onClick={() => pindahHalaman("input")}
+              >
+                Input Data
+              </button>
+            </div>
           </div>
 
           <div className="hero-panel">
-            <span>Prediksi terakhir</span>
-            <strong>{ringkasan.tahunPrediksi || "-"}</strong>
-            <p>{formatCompact(ringkasan.prediksiTerakhir)} kendaraan</p>
-            <button type="button" onClick={ambilData} disabled={loading}>
-              {loading ? "Memuat..." : "Refresh Data"}
-            </button>
-          </div>
-        </header>
-
-        {(pesan || error) && (
-          <div className={`message ${error ? "error" : "success"}`}>
-            {error || pesan}
-          </div>
-        )}
-
-        <section className="stat-grid">
-          <article className="stat-card blue">
-            <span>Total Aktual</span>
-            <strong>{formatCompact(ringkasan.totalAktual)}</strong>
-            <p>Data sampai tahun {ringkasan.tahunAktual || "-"}</p>
-          </article>
-
-          <article className="stat-card orange">
-            <span>Total Prediksi</span>
-            <strong>{formatCompact(ringkasan.totalPrediksi)}</strong>
-            <p>Forecast sampai tahun {ringkasan.tahunPrediksi || "-"}</p>
-          </article>
-
-          <article className="stat-card green">
-            <span>Provinsi</span>
-            <strong>{formatAngka(ringkasan.jumlahProvinsi)}</strong>
-            <p>Wilayah dalam dataset</p>
-          </article>
-
-          <article className="stat-card purple">
-            <span>Rata-rata MAPE</span>
-            <strong>{formatPersen(ringkasan.rataMape)}</strong>
-            <p>Evaluasi performa LSTM</p>
-          </article>
-        </section>
-
-        <section className="toolbar">
-          <div>
-            <label>Provinsi</label>
-            <select
-              value={filterProvinsi}
-              onChange={(e) => setFilterProvinsi(e.target.value)}
-            >
-              {daftarProvinsi.map((provinsi) => (
-                <option key={provinsi} value={provinsi}>
-                  {provinsi}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>Jenis Kendaraan</label>
-            <select
-              value={filterJenis}
-              onChange={(e) => setFilterJenis(e.target.value)}
-            >
-              {jenisKendaraanList.map((jenis) => (
-                <option key={jenis.value} value={jenis.value}>
-                  {jenis.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="Semua">Semua</option>
-              <option value="Aktual">Aktual</option>
-              <option value="Prediksi">Prediksi</option>
-            </select>
-          </div>
-
-          <div className="search-box">
-            <label>Pencarian</label>
-            <input
-              value={pencarian}
-              onChange={(e) => setPencarian(e.target.value)}
-              placeholder="Cari provinsi / tahun"
-            />
+            <span>Tahun prediksi terakhir</span>
+            <strong>{tahunPrediksiTerakhir || "-"}</strong>
+            <p>
+              Fokus utama dashboard adalah membandingkan data aktual dengan data
+              prediksi kendaraan.
+            </p>
           </div>
         </section>
 
-        <section className="content-grid" id="tren">
-          <article className="panel panel-large">
+        <ToolbarFilter />
+        <StatGrid />
+
+        <section className="content-grid">
+          <div className="panel chart-panel">
             <div className="panel-header">
               <div>
-                <span className="section-label">Tren Aktual vs Prediksi</span>
-                <h2>{insight.labelJenis}</h2>
+                <span className="section-label">Tren Utama</span>
+                <h2>Aktual vs Prediksi</h2>
                 <p>
-                  {filterProvinsi === "Semua"
-                    ? "Akumulasi semua provinsi"
-                    : `Provinsi ${filterProvinsi}`}{" "}
-                  berdasarkan data aktual dan hasil forecasting.
+                  Grafik menampilkan {namaFilterJenis.toLowerCase()} berdasarkan
+                  filter provinsi yang dipilih.
                 </p>
               </div>
-
               <div className="legend">
                 <span>
                   <i className="legend-dot actual" /> Aktual
@@ -701,133 +931,239 @@ function App() {
                 </span>
               </div>
             </div>
-
             {loading ? (
               <div className="skeleton chart" />
             ) : (
-              <TrendChart aktual={trenAktual} prediksi={trenPrediksi} />
+              <TrendChart aktual={chartAktual} prediksi={chartPrediksi} />
             )}
-          </article>
+          </div>
 
-          <article className="panel insight-panel">
+          <div className="panel">
             <div className="panel-header compact-header">
               <div>
-                <span className="section-label">Insight Forecast</span>
-                <h2>Ringkasan</h2>
-              </div>
-            </div>
-
-            <div className="insight-box">
-              <span>Aktual terakhir</span>
-              <strong>{formatCompact(insight.nilaiAkhirAktual)}</strong>
-            </div>
-
-            <div className="insight-box forecast-box">
-              <span>Prediksi terakhir</span>
-              <strong>{formatCompact(insight.nilaiAkhirPrediksi)}</strong>
-            </div>
-
-            <p className="insight-text">
-              Selisih prediksi terhadap data aktual terakhir adalah{" "}
-              <b>{formatCompact(insight.selisih)}</b> kendaraan atau{" "}
-              <b>{formatPersen(insight.persen)}</b>.
-            </p>
-          </article>
-        </section>
-
-        <section className="content-grid two-column">
-          <article className="panel">
-            <div className="panel-header compact-header">
-              <div>
-                <span className="section-label">Komposisi Aktual</span>
+                <span className="section-label">Komposisi</span>
                 <h2>Jenis Kendaraan</h2>
-                <p>Komposisi berdasarkan tahun aktual terbaru.</p>
+                <p>Komposisi data aktual tahun terakhir.</p>
               </div>
             </div>
             <CompositionBars data={dataKomposisi} />
-          </article>
+          </div>
+        </section>
 
-          <article className="panel">
+        <section className="content-grid two-column">
+          <div className="panel">
             <div className="panel-header compact-header">
               <div>
-                <span className="section-label">Top Forecast</span>
-                <h2>Provinsi Tertinggi {ringkasan.tahunPrediksi || ""}</h2>
-                <p>Berdasarkan total kendaraan hasil prediksi.</p>
+                <span className="section-label">Top Prediksi</span>
+                <h2>Provinsi Tertinggi</h2>
+                <p>
+                  Berdasarkan {namaFilterJenis.toLowerCase()} tahun{" "}
+                  {tahunPrediksiTerakhir || "prediksi"}.
+                </p>
               </div>
             </div>
 
             <div className="rank-list">
               {topProvinsiPrediksi.map((item, index) => (
-                <div className="rank-item" key={item.id}>
+                <div className="rank-item" key={item.provinsi}>
                   <span>{index + 1}</span>
                   <div>
                     <strong>{item.provinsi}</strong>
-                    <small>
-                      {formatCompact(item.total_kendaraan)} kendaraan
-                    </small>
+                    <small>{formatAngka(item.nilai)} kendaraan</small>
                   </div>
                 </div>
               ))}
+
               {!topProvinsiPrediksi.length && (
                 <div className="empty-state compact">
-                  Belum ada data prediksi.
+                  Data prediksi belum ada.
                 </div>
               )}
             </div>
-          </article>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header compact-header">
+              <div>
+                <span className="section-label">Evaluasi Cepat</span>
+                <h2>Kualitas Model</h2>
+                <p>Diurutkan berdasarkan MAPE paling kecil.</p>
+              </div>
+            </div>
+
+            <div className="eval-list">
+              {evaluasiTerurut.slice(0, 4).map((item) => (
+                <div className="eval-row" key={item.id}>
+                  <div>
+                    <strong>{labelJenis(item.jenis_kendaraan)}</strong>
+                    <small>MAE {formatCompact(item.mae)}</small>
+                  </div>
+                  <span>{formatPersen(item.mape)}</span>
+                </div>
+              ))}
+
+              {!evaluasiTerurut.length && (
+                <div className="empty-state compact">
+                  Evaluasi belum tersedia.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function HalamanForecasting() {
+    return (
+      <>
+        <section className="page-heading">
+          <span className="eyebrow">Halaman Forecasting</span>
+          <h1>Analisis hasil prediksi kendaraan.</h1>
+          <p>
+            Gunakan filter untuk melihat tren prediksi per provinsi dan per
+            jenis kendaraan.
+          </p>
         </section>
 
-        <section className="panel" id="data">
+        <ToolbarFilter />
+
+        <section className="panel chart-panel full">
           <div className="panel-header">
             <div>
-              <span className="section-label">Database Kendaraan</span>
+              <span className="section-label">Grafik Forecasting</span>
+              <h2>{namaFilterJenis}</h2>
+              <p>
+                Membandingkan data aktual historis dengan data prediksi masa
+                depan.
+              </p>
+            </div>
+            <div className="legend">
+              <span>
+                <i className="legend-dot actual" /> Aktual
+              </span>
+              <span>
+                <i className="legend-dot forecast" /> Prediksi
+              </span>
+            </div>
+          </div>
+          <TrendChart aktual={chartAktual} prediksi={chartPrediksi} />
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-label">Tabel Forecasting</span>
               <h2>Data Aktual dan Prediksi</h2>
-              <p>Data dari tabel kendaraan_aktual dan prediksi_kendaraan.</p>
+              <p>Data yang tampil mengikuti filter di atas.</p>
             </div>
             <div className="table-count">
-              {formatAngka(dataGabungan.length)} baris
+              {formatAngka(dataGabungan.length)} data
+            </div>
+          </div>
+          <TabelData data={dataGabungan} />
+        </section>
+      </>
+    );
+  }
+
+  function HalamanData() {
+    return (
+      <>
+        <section className="page-heading">
+          <span className="eyebrow">Halaman Data</span>
+          <h1>Dataset kendaraan aktual dan prediksi.</h1>
+          <p>
+            Halaman ini membantu pengecekan data yang sudah masuk ke Supabase.
+          </p>
+        </section>
+
+        <ToolbarFilter />
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-label">Data Supabase</span>
+              <h2>Daftar Kendaraan</h2>
+              <p>
+                Tabel berisi gabungan data dari kendaraan_aktual dan
+                prediksi_kendaraan.
+              </p>
+            </div>
+            <button type="button" className="button-soft" onClick={ambilData}>
+              Refresh Data
+            </button>
+          </div>
+          <TabelData data={dataGabungan} />
+        </section>
+      </>
+    );
+  }
+
+  function HalamanEvaluasi() {
+    return (
+      <>
+        <section className="page-heading">
+          <span className="eyebrow">Halaman Evaluasi</span>
+          <h1>Evaluasi model LSTM.</h1>
+          <p>
+            Perhatikan nilai MAE, RMSE, dan MAPE untuk membaca performa model.
+          </p>
+        </section>
+
+        <section className="eval-grid">
+          {evaluasiTerurut.map((item) => (
+            <div className="eval-card" key={item.id}>
+              <span>{labelJenis(item.jenis_kendaraan)}</span>
+              <strong>{formatPersen(item.mape)}</strong>
+              <small>MAPE</small>
+              <div className="metric-line">
+                <p>
+                  <b>MAE</b>
+                  {formatCompact(item.mae)}
+                </p>
+                <p>
+                  <b>RMSE</b>
+                  {formatCompact(item.rmse)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-label">Detail Evaluasi</span>
+              <h2>Tabel Evaluasi Model</h2>
+              <p>Semakin kecil nilai error, semakin baik performa model.</p>
             </div>
           </div>
 
-          <div className="table-wrap">
+          <div className="table-wrap mini-table">
             <table>
               <thead>
                 <tr>
-                  <th>Provinsi</th>
-                  <th>Tahun</th>
-                  <th>Status</th>
-                  <th>Nilai Dipilih</th>
-                  <th>Mobil Penumpang</th>
-                  <th>Bus</th>
-                  <th>Truk</th>
-                  <th>Sepeda Motor</th>
-                  <th>Total</th>
+                  <th>Jenis Kendaraan</th>
+                  <th>MAE</th>
+                  <th>RMSE</th>
+                  <th>MAPE</th>
                 </tr>
               </thead>
               <tbody>
-                {dataGabungan.map((item) => (
-                  <tr key={`${item.sumber}-${item.id}`}>
-                    <td>
-                      <strong>{item.provinsi}</strong>
-                    </td>
-                    <td>{item.tahun}</td>
-                    <td>
-                      <span className={`badge ${item.sumber.toLowerCase()}`}>
-                        {item.sumber}
-                      </span>
-                    </td>
-                    <td>{formatAngka(item[filterJenis])}</td>
-                    <td>{formatAngka(item.mobil_penumpang)}</td>
-                    <td>{formatAngka(item.bus)}</td>
-                    <td>{formatAngka(item.truk)}</td>
-                    <td>{formatAngka(item.sepeda_motor)}</td>
-                    <td>{formatAngka(item.total_kendaraan)}</td>
+                {evaluasiTerurut.map((item) => (
+                  <tr key={item.id}>
+                    <td>{labelJenis(item.jenis_kendaraan)}</td>
+                    <td>{formatAngka(item.mae)}</td>
+                    <td>{formatAngka(item.rmse)}</td>
+                    <td>{formatPersen(item.mape)}</td>
                   </tr>
                 ))}
-                {!loading && !dataGabungan.length && (
+
+                {!evaluasiTerurut.length && (
                   <tr>
-                    <td colSpan="9" className="empty-cell">
-                      Data tidak ditemukan.
+                    <td colSpan="4" className="empty-cell">
+                      Data evaluasi belum tersedia.
                     </td>
                   </tr>
                 )}
@@ -835,131 +1171,269 @@ function App() {
             </table>
           </div>
         </section>
+      </>
+    );
+  }
 
-        <section className="content-grid two-column" id="evaluasi">
-          <article className="panel">
-            <div className="panel-header compact-header">
-              <div>
-                <span className="section-label">Evaluasi Model</span>
-                <h2>Performa LSTM</h2>
-                <p>MAE, RMSE, dan MAPE berdasarkan jenis kendaraan.</p>
-              </div>
-            </div>
-
-            <div className="eval-grid">
-              {evaluasi.map((item) => (
-                <div className="eval-card" key={item.id}>
-                  <span>{normalisasiNamaKolom(item.jenis_kendaraan)}</span>
-                  <strong>{formatPersen(item.mape)}</strong>
-                  <small>MAPE</small>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="panel">
-            <div className="panel-header compact-header">
-              <div>
-                <span className="section-label">Tabel Evaluasi</span>
-                <h2>Detail Error</h2>
-              </div>
-            </div>
-
-            <div className="table-wrap mini-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Jenis</th>
-                    <th>MAE</th>
-                    <th>RMSE</th>
-                    <th>MAPE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {evaluasi.map((item) => (
-                    <tr key={item.id}>
-                      <td>{normalisasiNamaKolom(item.jenis_kendaraan)}</td>
-                      <td>{formatCompact(item.mae)}</td>
-                      <td>{formatCompact(item.rmse)}</td>
-                      <td>{formatPersen(item.mape)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </article>
+  function HalamanInput() {
+    return (
+      <>
+        <section className="page-heading">
+          <span className="eyebrow">Halaman Input</span>
+          <h1>Input data aktual dan skenario prediksi.</h1>
+          <p>
+            Data aktual masuk ke tabel kendaraan_aktual, sedangkan input
+            prediksi masuk ke tabel prediksi_kendaraan.
+          </p>
         </section>
 
-        <section className="panel input-panel" id="input">
-          <div className="panel-header">
-            <div>
-              <span className="section-label">Input Data</span>
-              <h2>Tambah Data Aktual</h2>
-              <p>
-                Data yang disimpan akan masuk ke tabel kendaraan_aktual. Total
-                kendaraan dihitung otomatis dari empat jenis kendaraan.
-              </p>
+        <section className="content-grid two-column input-layout">
+          <div className="panel input-panel">
+            <div className="panel-header compact-header">
+              <div>
+                <span className="section-label">Input Aktual</span>
+                <h2>Tambah Data Aktual</h2>
+                <p>Gunakan untuk menambah data kendaraan historis.</p>
+              </div>
             </div>
-          </div>
 
-          <form className="form-grid" onSubmit={simpanDataAktual}>
-            <label>
-              Provinsi
-              <input
-                name="provinsi"
-                value={form.provinsi}
-                onChange={handleInputChange}
-                placeholder="Contoh: Riau"
-                required
-              />
-            </label>
+            <form
+              className="form-grid form-vertical"
+              onSubmit={simpanDataAktual}
+            >
+              <label>
+                Provinsi
+                <input
+                  name="provinsi"
+                  value={formAktual.provinsi}
+                  onChange={handleFormAktualChange}
+                  placeholder="Contoh: Riau"
+                  required
+                />
+              </label>
 
-            <label>
-              Tahun
-              <input
-                name="tahun"
-                type="number"
-                min="2000"
-                value={form.tahun}
-                onChange={handleInputChange}
-                placeholder="Contoh: 2026"
-                required
-              />
-            </label>
+              <label>
+                Tahun
+                <input
+                  name="tahun"
+                  type="number"
+                  value={formAktual.tahun}
+                  onChange={handleFormAktualChange}
+                  placeholder="Contoh: 2025"
+                  required
+                />
+              </label>
 
-            {kolomKendaraan
-              .filter((kolom) => kolom !== "total_kendaraan")
-              .map((kolom) => (
-                <label key={kolom}>
-                  {normalisasiNamaKolom(kolom)}
+              {kolomInputKendaraan.map((kolom) => (
+                <label key={kolom.name}>
+                  {kolom.label}
                   <input
-                    name={kolom}
+                    name={kolom.name}
                     type="number"
                     min="0"
-                    value={form[kolom]}
-                    onChange={handleInputChange}
+                    value={formAktual[kolom.name]}
+                    onChange={handleFormAktualChange}
                     placeholder="0"
                   />
                 </label>
               ))}
 
-            <div className="calculated-total">
-              <span>Total Otomatis</span>
-              <strong>
-                {formatAngka(
-                  Number(form.mobil_penumpang || 0) +
-                    Number(form.bus || 0) +
-                    Number(form.truk || 0) +
-                    Number(form.sepeda_motor || 0),
-                )}
-              </strong>
+              <div className="calculated-total">
+                <span>Total Otomatis</span>
+                <strong>{formatAngka(totalFormAktual)}</strong>
+              </div>
+
+              <button type="submit" disabled={savingAktual}>
+                {savingAktual ? "Menyimpan..." : "Simpan Data Aktual"}
+              </button>
+            </form>
+          </div>
+
+          <div className="panel input-panel forecast-input-panel">
+            <div className="panel-header compact-header">
+              <div>
+                <span className="section-label">Input Prediksi</span>
+                <h2>Tambah Skenario Prediksi</h2>
+                <p>
+                  Bisa diisi manual atau dihitung cepat dari data aktual
+                  terakhir.
+                </p>
+              </div>
             </div>
 
-            <button type="submit" disabled={saving}>
-              {saving ? "Menyimpan..." : "Simpan ke Supabase"}
-            </button>
-          </form>
+            <div className="quick-predictor">
+              <label>
+                Pertumbuhan Cepat (%)
+                <input
+                  type="number"
+                  value={growthPrediksi}
+                  onChange={(event) => setGrowthPrediksi(event.target.value)}
+                  placeholder="5"
+                />
+              </label>
+              <button type="button" onClick={isiPrediksiDariAktualTerakhir}>
+                Hitung Dari Aktual Terakhir
+              </button>
+            </div>
+
+            <form
+              className="form-grid form-vertical"
+              onSubmit={simpanDataPrediksi}
+            >
+              <label>
+                Provinsi
+                <input
+                  name="provinsi"
+                  value={formPrediksi.provinsi}
+                  onChange={handleFormPrediksiChange}
+                  placeholder="Contoh: Riau"
+                  required
+                  list="list-provinsi"
+                />
+              </label>
+
+              <label>
+                Tahun Prediksi
+                <input
+                  name="tahun"
+                  type="number"
+                  value={formPrediksi.tahun}
+                  onChange={handleFormPrediksiChange}
+                  placeholder="Contoh: 2026"
+                  required
+                />
+              </label>
+
+              <datalist id="list-provinsi">
+                {daftarProvinsi
+                  .filter((provinsi) => provinsi !== "Semua")
+                  .map((provinsi) => (
+                    <option key={provinsi} value={provinsi} />
+                  ))}
+              </datalist>
+
+              {kolomInputKendaraan.map((kolom) => (
+                <label key={kolom.name}>
+                  {kolom.label}
+                  <input
+                    name={kolom.name}
+                    type="number"
+                    min="0"
+                    value={formPrediksi[kolom.name]}
+                    onChange={handleFormPrediksiChange}
+                    placeholder="0"
+                  />
+                </label>
+              ))}
+
+              <div className="calculated-total forecast-total">
+                <span>Total Prediksi</span>
+                <strong>{formatAngka(totalFormPrediksi)}</strong>
+              </div>
+
+              <button type="submit" disabled={savingPrediksi}>
+                {savingPrediksi ? "Menyimpan..." : "Simpan Data Prediksi"}
+              </button>
+            </form>
+          </div>
         </section>
+      </>
+    );
+  }
+
+  function HalamanTentang() {
+    return (
+      <>
+        <section className="page-heading">
+          <span className="eyebrow">Tentang Sistem</span>
+          <h1>Cara membaca dashboard forecasting.</h1>
+          <p>
+            Dashboard ini memisahkan data aktual, data prediksi, dan evaluasi
+            model agar alur analisis lebih mudah dipahami.
+          </p>
+        </section>
+
+        <section className="content-grid two-column">
+          <div className="panel info-panel">
+            <span className="section-label">Alur Data</span>
+            <h2>Dari notebook ke web</h2>
+            <ol className="step-list">
+              <li>Dataset kendaraan diproses dan dinormalisasi di notebook.</li>
+              <li>
+                Model LSTM menghasilkan forecasting beberapa tahun ke depan.
+              </li>
+              <li>Output CSV diimport ke Supabase.</li>
+              <li>
+                Web membaca data Supabase dan menampilkannya sebagai dashboard.
+              </li>
+            </ol>
+          </div>
+
+          <div className="panel info-panel warm">
+            <span className="section-label">Input Prediksi</span>
+            <h2>Apakah prediksi bisa ada inputan?</h2>
+            <p>
+              Bisa. Di web ini sudah ditambahkan halaman Input Prediksi. Namun
+              input tersebut adalah skenario/manual forecasting yang disimpan ke
+              tabel prediksi_kendaraan. Untuk menjalankan model LSTM asli dari
+              input web, perlu backend Python/API yang memuat model hasil
+              training.
+            </p>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderHalaman() {
+    if (halamanAktif === "forecasting") return <HalamanForecasting />;
+    if (halamanAktif === "data") return <HalamanData />;
+    if (halamanAktif === "evaluasi") return <HalamanEvaluasi />;
+    if (halamanAktif === "input") return <HalamanInput />;
+    if (halamanAktif === "tentang") return <HalamanTentang />;
+    return <HalamanDashboard />;
+  }
+
+  return (
+    <div className="app-shell">
+      <nav className="top-navbar">
+        <button
+          type="button"
+          className="brand-button"
+          onClick={() => pindahHalaman("dashboard")}
+        >
+          <span className="brand-mark">FK</span>
+          <span>
+            <strong>Forecasting Kendaraan</strong>
+            <small>LSTM Dashboard</small>
+          </span>
+        </button>
+
+        <div className="navbar-links" aria-label="Navigasi utama">
+          {halamanList.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className={halamanAktif === item.id ? "active" : ""}
+              onClick={() => pindahHalaman(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <button type="button" className="refresh-button" onClick={ambilData}>
+          Refresh
+        </button>
+      </nav>
+
+      <main className="main-content">
+        {pesan && <div className="message success">{pesan}</div>}
+        {error && <div className="message error">{error}</div>}
+        {loading && (
+          <div className="message info">Memuat data dari Supabase...</div>
+        )}
+        {renderHalaman()}
       </main>
     </div>
   );
