@@ -2110,8 +2110,8 @@ tbody tr:hover {
 
 .brand-logo-wrap {
   position: relative;
-  width: 136px !important;
-  height: 136px !important;
+  width: 100px !important;
+  height: 100px !important;
   margin: 0 auto -4px !important;
   display: grid !important;
   place-items: center !important;
