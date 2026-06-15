@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
+import logoImage from "./assets/logo.png";
 import "./App.css";
 
 const jenisKendaraanList = [
@@ -18,13 +19,94 @@ const kolomInputKendaraan = [
   { name: "sepeda_motor", label: "Sepeda Motor" },
 ];
 
+function IconDashboard() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z" />
+    </svg>
+  );
+}
+
+function IconForecasting() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 18.5h16v1.8H4v-1.8Zm1.2-3.3 4.6-4.6 3.4 3.4 5.1-6.4 1.4 1.1-6.3 7.9-3.6-3.6-3.3 3.3-1.3-1.1Z" />
+      <path d="M17 6h4v4h-1.8V8.9l-2.4 3-1.4-1.1 2.3-3H17V6Z" />
+    </svg>
+  );
+}
+
+function IconData() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3C7.6 3 4 4.4 4 6.2v11.6C4 19.6 7.6 21 12 21s8-1.4 8-3.2V6.2C20 4.4 16.4 3 12 3Zm0 2c3.7 0 6 .9 6 1.2s-2.3 1.2-6 1.2-6-.9-6-1.2S8.3 5 12 5Zm0 5.3c2.4 0 4.6-.4 6-1.1v2.6c0 .3-2.3 1.2-6 1.2s-6-.9-6-1.2V9.2c1.4.7 3.6 1.1 6 1.1Zm0 8.7c-3.7 0-6-.9-6-1.2v-2.6c1.4.7 3.6 1.1 6 1.1s4.6-.4 6-1.1v2.6c0 .3-2.3 1.2-6 1.2Z" />
+    </svg>
+  );
+}
+
+function IconEvaluasi() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 19h14v2H5v-2Zm1-8h3v6H6v-6Zm5-6h3v12h-3V5Zm5 4h3v8h-3V9Z" />
+    </svg>
+  );
+}
+
+function IconInput() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14h-2V5h2Zm-5 6v8H5v-8h2Zm10-4v12h-2V7h2Zm4 7v5h-2v-5h2Z" />
+      <path d="M3 19h18v2H3v-2Z" />
+    </svg>
+  );
+}
+
+function IconTentang() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11 10h2v8h-2v-8Zm0-4h2v2h-2V6Z" />
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />
+    </svg>
+  );
+}
+
 const halamanList = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "forecasting", label: "Forecasting" },
-  { id: "data", label: "Data" },
-  { id: "evaluasi", label: "Evaluasi" },
-  { id: "input", label: "Input" },
-  { id: "tentang", label: "Tentang" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    hint: "Ringkasan performa",
+    icon: IconDashboard,
+  },
+  {
+    id: "forecasting",
+    label: "Forecasting",
+    hint: "Grafik aktual vs prediksi",
+    icon: IconForecasting,
+  },
+  {
+    id: "data",
+    label: "Data",
+    hint: "Tabel data Supabase",
+    icon: IconData,
+  },
+  {
+    id: "evaluasi",
+    label: "Evaluasi",
+    hint: "MAE, RMSE, MAPE",
+    icon: IconEvaluasi,
+  },
+  {
+    id: "input",
+    label: "Input",
+    hint: "Aktual dan skenario",
+    icon: IconInput,
+  },
+  {
+    id: "tentang",
+    label: "Tentang",
+    hint: "Alur sistem",
+    icon: IconTentang,
+  },
 ];
 
 function formatAngka(nilai) {
@@ -1394,47 +1476,108 @@ function App() {
     return <HalamanDashboard />;
   }
 
+  const menuAktif =
+    halamanList.find((item) => item.id === halamanAktif) || halamanList[0];
+
   return (
     <div className="app-shell">
-      <nav className="top-navbar">
+      <aside className="sidebar" aria-label="Sidebar dashboard">
         <button
           type="button"
-          className="brand-button"
+          className="sidebar-brand"
           onClick={() => pindahHalaman("dashboard")}
+          aria-label="Kembali ke dashboard"
         >
-          <span className="brand-mark">FK</span>
-          <span>
-            <strong>Forecasting Kendaraan</strong>
-            <small>LSTM Dashboard</small>
+          <span className="brand-logo-wrap">
+            <img
+              src={logoImage}
+              alt="Logo Forecasting Kendaraan"
+              className="brand-logo-image"
+            />
+          </span>
+
+          <span className="brand-copy">
+            <strong>Forecasting</strong>
+            <small>Kendaraan LSTM</small>
           </span>
         </button>
 
-        <div className="navbar-links" aria-label="Navigasi utama">
-          {halamanList.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              className={halamanAktif === item.id ? "active" : ""}
-              onClick={() => pindahHalaman(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="sidebar-divider" />
+
+        <div className="sidebar-section">
+          <div className="sidebar-menu">
+            {halamanList.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={halamanAktif === item.id ? "active" : ""}
+                  onClick={() => pindahHalaman(item.id)}
+                >
+                  <span className={`menu-icon ${item.id}`}>
+                    <Icon />
+                  </span>
+                  <span className="menu-copy">
+                    <strong>{item.label}</strong>
+                    <small>{item.hint}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+      </aside>
 
-        <button type="button" className="refresh-button" onClick={ambilData}>
-          Refresh
-        </button>
-      </nav>
+      <div className="workspace">
+        <header className="top-navbar">
+          <div className="topbar-main">
+            <div className="topbar-title">
+              <span className="eyebrow">{menuAktif.label}</span>
+              <h1>{menuAktif.hint}</h1>
+              <p>
+                Dashboard interaktif untuk membaca data aktual, prediksi,
+                evaluasi, dan input skenario kendaraan.
+              </p>
+            </div>
 
-      <main className="main-content">
-        {pesan && <div className="message success">{pesan}</div>}
-        {error && <div className="message error">{error}</div>}
-        {loading && (
-          <div className="message info">Memuat data dari Supabase...</div>
-        )}
-        {renderHalaman()}
-      </main>
+            <div className="topbar-actions">
+              <div className="connection-pill">
+                <i
+                  className={`status-dot ${
+                    error ? "danger" : loading ? "loading" : "ok"
+                  }`}
+                />
+                <span>
+                  {loading
+                    ? "Memuat"
+                    : error
+                      ? "Perlu dicek"
+                      : "Supabase aktif"}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="refresh-button"
+                onClick={ambilData}
+              >
+                Refresh Data
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="main-content">
+          {pesan && <div className="message success">{pesan}</div>}
+          {error && <div className="message error">{error}</div>}
+          {loading && (
+            <div className="message info">Memuat data dari Supabase...</div>
+          )}
+          {renderHalaman()}
+        </main>
+      </div>
     </div>
   );
 }
