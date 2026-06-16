@@ -19,6 +19,13 @@ const kolomInputKendaraan = [
   { name: "sepeda_motor", label: "Sepeda Motor" },
 ];
 
+const nilaiPrediksiKosong = {
+  mobil_penumpang: "",
+  bus: "",
+  truk: "",
+  sepeda_motor: "",
+};
+
 function IconDashboard() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -488,6 +495,9 @@ function App() {
     sepeda_motor: "",
   });
 
+  const [dropdownProvinsiPrediksiTerbuka, setDropdownProvinsiPrediksiTerbuka] =
+    useState(false);
+
   async function ambilData() {
     setLoading(true);
     setPesan("");
@@ -542,6 +552,30 @@ function App() {
       ...Array.from(new Set(semua)).sort((a, b) => a.localeCompare(b)),
     ];
   }, [dataAktual, dataPrediksi]);
+
+  const daftarProvinsiAktual = useMemo(() => {
+    const semua = dataAktual
+      .map((item) => String(item.provinsi || "").trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(semua)).sort((a, b) =>
+      a.localeCompare(b, "id", { sensitivity: "base" }),
+    );
+  }, [dataAktual]);
+
+  const daftarProvinsiPrediksiTampil = useMemo(() => {
+    const keyword = String(formPrediksi.provinsi || "")
+      .trim()
+      .toLowerCase();
+
+    if (!keyword) {
+      return daftarProvinsiAktual;
+    }
+
+    return daftarProvinsiAktual.filter((provinsi) =>
+      provinsi.toLowerCase().includes(keyword),
+    );
+  }, [daftarProvinsiAktual, formPrediksi.provinsi]);
 
   const dataGabungan = useMemo(() => {
     let gabungan = [
@@ -692,33 +726,70 @@ function App() {
 
   function handleFormPrediksiChange(event) {
     const { name, value } = event.target;
-    setFormPrediksi((prev) => ({ ...prev, [name]: value }));
+
+    if (kolomInputKendaraan.some((kolom) => kolom.name === name)) {
+      return;
+    }
+
+    setFormPrediksi((prev) => ({
+      ...prev,
+      [name]: value,
+      ...nilaiPrediksiKosong,
+    }));
+
+    if (name === "provinsi") {
+      setDropdownProvinsiPrediksiTerbuka(true);
+    }
+  }
+
+  function pilihProvinsiPrediksi(provinsi) {
+    setFormPrediksi((prev) => ({
+      ...prev,
+      provinsi,
+      ...nilaiPrediksiKosong,
+    }));
+    setDropdownProvinsiPrediksiTerbuka(false);
+    setPesan("");
+    setError("");
   }
 
   function handleGrowthPrediksiChange(event) {
     setGrowthPrediksi(event.target.value);
+    setFormPrediksi((prev) => ({
+      ...prev,
+      ...nilaiPrediksiKosong,
+    }));
   }
 
   function isiPrediksiDariAktualTerakhir() {
-    const provinsiDipilih = String(
-      formPrediksi.provinsi || filterProvinsi || "",
-    ).trim();
+    const provinsiDipilih = String(formPrediksi.provinsi || "").trim();
 
-    if (!provinsiDipilih || provinsiDipilih === "Semua") {
+    if (!provinsiDipilih) {
       setError(
-        "Isi atau pilih provinsi terlebih dahulu sebelum membuat prediksi cepat.",
+        "Pilih provinsi dari dropdown terlebih dahulu sebelum membuat prediksi cepat.",
       );
       setPesan("");
       return;
     }
 
-    const provinsiKey = provinsiDipilih.toLowerCase();
+    const provinsiTerdaftar = daftarProvinsiAktual.find(
+      (provinsi) => provinsi.toLowerCase() === provinsiDipilih.toLowerCase(),
+    );
+
+    if (!provinsiTerdaftar) {
+      setError(
+        "Provinsi tidak ditemukan pada data aktual. Pilih provinsi dari dropdown yang tersedia.",
+      );
+      setPesan("");
+      return;
+    }
+
     const dataProvinsi = dataAktual
       .filter(
         (item) =>
           String(item.provinsi || "")
             .trim()
-            .toLowerCase() === provinsiKey,
+            .toLowerCase() === provinsiTerdaftar.toLowerCase(),
       )
       .sort((a, b) => Number(b.tahun) - Number(a.tahun));
 
@@ -733,14 +804,29 @@ function App() {
     const dataTerakhir = dataProvinsi[0];
     const tahunTerakhir = Math.round(angkaInput(dataTerakhir.tahun));
     const tahunInput = Math.round(angkaInput(formPrediksi.tahun));
-    const tahunPrediksi =
-      tahunInput > tahunTerakhir ? tahunInput : tahunTerakhir + 1;
-    const jarakTahun = Math.max(tahunPrediksi - tahunTerakhir, 1);
+    const tahunPrediksi = tahunInput || tahunTerakhir + 1;
+
+    if (tahunPrediksi <= tahunTerakhir) {
+      setError(
+        `Tahun prediksi harus lebih besar dari tahun aktual terakhir. Data aktual terakhir ${provinsiTerdaftar} adalah ${tahunTerakhir}, jadi minimal tahun prediksi adalah ${
+          tahunTerakhir + 1
+        }.`,
+      );
+      setPesan("");
+      setFormPrediksi((prev) => ({
+        ...prev,
+        tahun: tahunTerakhir + 1,
+        ...nilaiPrediksiKosong,
+      }));
+      return;
+    }
+
+    const jarakTahun = tahunPrediksi - tahunTerakhir;
     const faktorTahunan = 1 + angkaInput(growthPrediksi) / 100;
     const faktor = Math.pow(faktorTahunan, jarakTahun);
 
     setFormPrediksi({
-      provinsi: dataTerakhir.provinsi || provinsiDipilih,
+      provinsi: provinsiTerdaftar,
       tahun: tahunPrediksi,
       mobil_penumpang: Math.round(
         Number(dataTerakhir.mobil_penumpang || 0) * faktor,
@@ -811,6 +897,14 @@ function App() {
       return;
     }
 
+    if (payload.total_kendaraan <= 0) {
+      setError(
+        "Nilai prediksi belum dihitung. Pilih provinsi dan tahun, lalu klik Hitung Dari Aktual Terakhir terlebih dahulu.",
+      );
+      setSavingPrediksi(false);
+      return;
+    }
+
     const { error: insertError } = await supabase
       .from("prediksi_kendaraan")
       .insert(payload);
@@ -828,10 +922,7 @@ function App() {
     setFormPrediksi({
       provinsi: "",
       tahun: "",
-      mobil_penumpang: "",
-      bus: "",
-      truk: "",
-      sepeda_motor: "",
+      ...nilaiPrediksiKosong,
     });
 
     await ambilData();
@@ -1301,8 +1392,9 @@ function App() {
           <span className="eyebrow">Halaman Input</span>
           <h1>Input data aktual dan skenario prediksi.</h1>
           <p>
-            Data aktual masuk ke tabel kendaraan_aktual, sedangkan input
-            prediksi masuk ke tabel prediksi_kendaraan.
+            Data aktual masuk ke tabel kendaraan_aktual. Skenario prediksi
+            dihitung otomatis dari data aktual terakhir berdasarkan pertumbuhan
+            yang kamu tentukan.
           </p>
         </section>
 
@@ -1374,11 +1466,12 @@ function App() {
           <div className="panel input-panel forecast-input-panel">
             <div className="panel-header compact-header">
               <div>
-                <span className="section-label">Input Prediksi</span>
-                <h2>Tambah Skenario Prediksi</h2>
+                <span className="section-label">Simulasi Prediksi</span>
+                <h2>Hitung Skenario Pertumbuhan</h2>
                 <p>
-                  Bisa diisi manual atau dihitung cepat dari data aktual
-                  terakhir.
+                  Pilih provinsi dari data aktual, tentukan tahun prediksi dan
+                  persentase pertumbuhan. Nilai mobil, bus, truk, dan sepeda
+                  motor dihitung otomatis, tidak diinput manual.
                 </p>
               </div>
             </div>
@@ -1403,17 +1496,50 @@ function App() {
               className="form-grid form-vertical"
               onSubmit={simpanDataPrediksi}
             >
-              <label>
+              <label className="custom-select-label">
                 Provinsi
-                <input
-                  name="provinsi"
-                  value={formPrediksi.provinsi}
-                  onChange={handleFormPrediksiChange}
-                  placeholder="Contoh: Riau"
-                  autoComplete="off"
-                  required
-                  list="list-provinsi"
-                />
+                <div className="custom-select-wrap">
+                  <input
+                    name="provinsi"
+                    value={formPrediksi.provinsi}
+                    onChange={handleFormPrediksiChange}
+                    onFocus={() => setDropdownProvinsiPrediksiTerbuka(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setDropdownProvinsiPrediksiTerbuka(false);
+                      }, 120);
+                    }}
+                    placeholder="Ketik atau pilih provinsi..."
+                    autoComplete="off"
+                    required
+                  />
+                  <span className="custom-select-arrow" aria-hidden="true">
+                    ▾
+                  </span>
+
+                  {dropdownProvinsiPrediksiTerbuka && (
+                    <div className="custom-select-options">
+                      {daftarProvinsiPrediksiTampil.map((provinsi) => (
+                        <button
+                          type="button"
+                          key={provinsi}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            pilihProvinsiPrediksi(provinsi);
+                          }}
+                        >
+                          {provinsi}
+                        </button>
+                      ))}
+
+                      {!daftarProvinsiPrediksiTampil.length && (
+                        <div className="custom-select-empty">
+                          Provinsi tidak ditemukan di data aktual.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </label>
 
               <label>
@@ -1429,14 +1555,6 @@ function App() {
                 />
               </label>
 
-              <datalist id="list-provinsi">
-                {daftarProvinsi
-                  .filter((provinsi) => provinsi !== "Semua")
-                  .map((provinsi) => (
-                    <option key={provinsi} value={provinsi} />
-                  ))}
-              </datalist>
-
               {kolomInputKendaraan.map((kolom) => (
                 <label key={kolom.name}>
                   {kolom.label}
@@ -1445,9 +1563,9 @@ function App() {
                     type="number"
                     min="0"
                     value={formPrediksi[kolom.name]}
-                    onChange={handleFormPrediksiChange}
-                    placeholder="0"
+                    placeholder="Klik tombol hitung"
                     autoComplete="off"
+                    readOnly
                   />
                 </label>
               ))}
@@ -1500,10 +1618,10 @@ function App() {
             <h2>Apakah prediksi bisa ada inputan?</h2>
             <p>
               Bisa. Di web ini sudah ditambahkan halaman Input Prediksi. Namun
-              input tersebut adalah skenario/manual forecasting yang disimpan ke
-              tabel prediksi_kendaraan. Untuk menjalankan model LSTM asli dari
-              input web, perlu backend Python/API yang memuat model hasil
-              training.
+              input tersebut adalah skenario pertumbuhan yang dihitung dari data
+              aktual terakhir dan disimpan ke tabel prediksi_kendaraan. Untuk
+              menjalankan model LSTM asli dari input web, perlu backend
+              Python/API yang memuat model hasil training.
             </p>
           </div>
         </section>
