@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import logoImage from "./assets/logo.png";
 import "./App.css";
@@ -455,6 +455,20 @@ function App() {
   const [savingPrediksi, setSavingPrediksi] = useState(false);
   const [pesan, setPesan] = useState("");
   const [error, setError] = useState("");
+  const posisiScrollInputRef = useRef(0);
+
+  function tahanPosisiScrollInput() {
+    posisiScrollInputRef.current = window.scrollY || window.pageYOffset || 0;
+
+    requestAnimationFrame(() => {
+      const posisiSekarang = window.scrollY || window.pageYOffset || 0;
+      const posisiSebelumnya = posisiScrollInputRef.current;
+
+      if (Math.abs(posisiSekarang - posisiSebelumnya) > 2) {
+        window.scrollTo({ top: posisiSebelumnya, left: 0, behavior: "auto" });
+      }
+    });
+  }
 
   const [filterProvinsi, setFilterProvinsi] = useState("Semua");
   const [filterJenis, setFilterJenis] = useState("total_kendaraan");
@@ -679,41 +693,61 @@ function App() {
 
   function handleFormAktualChange(event) {
     const { name, value } = event.target;
+    tahanPosisiScrollInput();
     setFormAktual((prev) => ({ ...prev, [name]: value }));
   }
 
   function handleFormPrediksiChange(event) {
     const { name, value } = event.target;
+    tahanPosisiScrollInput();
     setFormPrediksi((prev) => ({ ...prev, [name]: value }));
   }
 
   function isiPrediksiDariAktualTerakhir() {
-    const provinsiDipilih = formPrediksi.provinsi || filterProvinsi;
+    tahanPosisiScrollInput();
+
+    const provinsiDipilih = String(
+      formPrediksi.provinsi || filterProvinsi || "",
+    ).trim();
 
     if (!provinsiDipilih || provinsiDipilih === "Semua") {
       setError(
-        "Pilih provinsi terlebih dahulu sebelum membuat prediksi cepat.",
+        "Isi atau pilih provinsi terlebih dahulu sebelum membuat prediksi cepat.",
       );
       setPesan("");
       return;
     }
 
+    const provinsiKey = provinsiDipilih.toLowerCase();
     const dataProvinsi = dataAktual
-      .filter((item) => item.provinsi === provinsiDipilih)
+      .filter(
+        (item) =>
+          String(item.provinsi || "")
+            .trim()
+            .toLowerCase() === provinsiKey,
+      )
       .sort((a, b) => Number(b.tahun) - Number(a.tahun));
 
     if (!dataProvinsi.length) {
-      setError("Data aktual provinsi tersebut belum tersedia.");
+      setError(
+        "Data aktual untuk provinsi tersebut belum tersedia. Simpan data aktualnya dulu, lalu klik Hitung Dari Aktual Terakhir.",
+      );
       setPesan("");
       return;
     }
 
     const dataTerakhir = dataProvinsi[0];
-    const faktor = 1 + angkaInput(growthPrediksi) / 100;
+    const tahunTerakhir = Math.round(angkaInput(dataTerakhir.tahun));
+    const tahunInput = Math.round(angkaInput(formPrediksi.tahun));
+    const tahunPrediksi =
+      tahunInput > tahunTerakhir ? tahunInput : tahunTerakhir + 1;
+    const jarakTahun = Math.max(tahunPrediksi - tahunTerakhir, 1);
+    const faktorTahunan = 1 + angkaInput(growthPrediksi) / 100;
+    const faktor = Math.pow(faktorTahunan, jarakTahun);
 
     setFormPrediksi({
-      provinsi: provinsiDipilih,
-      tahun: Number(dataTerakhir.tahun || 0) + 1,
+      provinsi: dataTerakhir.provinsi || provinsiDipilih,
+      tahun: tahunPrediksi,
       mobil_penumpang: Math.round(
         Number(dataTerakhir.mobil_penumpang || 0) * faktor,
       ),
@@ -722,7 +756,9 @@ function App() {
       sepeda_motor: Math.round(Number(dataTerakhir.sepeda_motor || 0) * faktor),
     });
 
-    setPesan("Prediksi cepat berhasil dihitung dari data aktual terakhir.");
+    setPesan(
+      `Prediksi cepat berhasil dihitung dari data aktual ${tahunTerakhir} ke ${tahunPrediksi}.`,
+    );
     setError("");
   }
 
@@ -807,8 +843,12 @@ function App() {
   }
 
   function pindahHalaman(id) {
+    if (id === halamanAktif) return;
+
     setHalamanAktif(id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
 
   const namaFilterJenis = labelJenis(filterJenis);
@@ -990,8 +1030,8 @@ function App() {
           </div>
         </section>
 
-        <ToolbarFilter />
-        <StatGrid />
+        {ToolbarFilter()}
+        {StatGrid()}
 
         <section className="content-grid">
           <div className="panel chart-panel">
@@ -1108,7 +1148,7 @@ function App() {
           </p>
         </section>
 
-        <ToolbarFilter />
+        {ToolbarFilter()}
 
         <section className="panel chart-panel full">
           <div className="panel-header">
@@ -1143,7 +1183,7 @@ function App() {
               {formatAngka(dataGabungan.length)} data
             </div>
           </div>
-          <TabelData data={dataGabungan} />
+          {TabelData({ data: dataGabungan })}
         </section>
       </>
     );
@@ -1160,7 +1200,7 @@ function App() {
           </p>
         </section>
 
-        <ToolbarFilter />
+        {ToolbarFilter()}
 
         <section className="panel">
           <div className="panel-header">
@@ -1176,7 +1216,7 @@ function App() {
               Refresh Data
             </button>
           </div>
-          <TabelData data={dataGabungan} />
+          {TabelData({ data: dataGabungan })}
         </section>
       </>
     );
@@ -1349,7 +1389,10 @@ function App() {
                 <input
                   type="number"
                   value={growthPrediksi}
-                  onChange={(event) => setGrowthPrediksi(event.target.value)}
+                  onChange={(event) => {
+                    tahanPosisiScrollInput();
+                    setGrowthPrediksi(event.target.value);
+                  }}
                   placeholder="5"
                 />
               </label>
@@ -1468,12 +1511,12 @@ function App() {
   }
 
   function renderHalaman() {
-    if (halamanAktif === "forecasting") return <HalamanForecasting />;
-    if (halamanAktif === "data") return <HalamanData />;
-    if (halamanAktif === "evaluasi") return <HalamanEvaluasi />;
-    if (halamanAktif === "input") return <HalamanInput />;
-    if (halamanAktif === "tentang") return <HalamanTentang />;
-    return <HalamanDashboard />;
+    if (halamanAktif === "forecasting") return HalamanForecasting();
+    if (halamanAktif === "data") return HalamanData();
+    if (halamanAktif === "evaluasi") return HalamanEvaluasi();
+    if (halamanAktif === "input") return HalamanInput();
+    if (halamanAktif === "tentang") return HalamanTentang();
+    return HalamanDashboard();
   }
 
   const menuAktif =
