@@ -1589,39 +1589,135 @@ function App() {
     return (
       <>
         <section className="page-heading">
-          <span className="eyebrow">Tentang Sistem</span>
-          <h1>Cara membaca dashboard forecasting.</h1>
+          <span className="eyebrow">Panduan Sistem</span>
+          <h1>Cara menggunakan dashboard forecasting kendaraan.</h1>
           <p>
-            Dashboard ini memisahkan data aktual, data prediksi, dan evaluasi
-            model agar alur analisis lebih mudah dipahami.
+            Halaman ini membantu pengguna memahami fungsi setiap menu, cara
+            membaca data aktual dan prediksi, serta cara memakai fitur simulasi
+            pertumbuhan kendaraan.
           </p>
         </section>
 
         <section className="content-grid two-column">
           <div className="panel info-panel">
-            <span className="section-label">Alur Data</span>
-            <h2>Dari notebook ke web</h2>
+            <span className="section-label">Tujuan Dashboard</span>
+            <h2>Untuk apa sistem ini digunakan?</h2>
+            <p>
+              Sistem ini digunakan untuk menampilkan data jumlah kendaraan
+              berdasarkan provinsi, tahun, dan jenis kendaraan. Data yang
+              ditampilkan terdiri dari data aktual, data prediksi, hasil
+              evaluasi model, dan simulasi pertumbuhan.
+            </p>
+          </div>
+
+          <div className="panel info-panel warm">
+            <span className="section-label">Jenis Data</span>
+            <h2>Aktual, prediksi, dan simulasi.</h2>
+            <p>
+              Data aktual adalah data kendaraan yang sudah tersedia atau
+              dimasukkan pengguna. Data prediksi adalah hasil forecasting yang
+              tersimpan di database. Simulasi prediksi digunakan untuk mencoba
+              skenario pertumbuhan berdasarkan data aktual terakhir.
+            </p>
+          </div>
+        </section>
+
+        <section className="content-grid two-column">
+          <div className="panel info-panel">
+            <span className="section-label">Panduan Menu</span>
+            <h2>Fungsi setiap menu</h2>
             <ol className="step-list">
-              <li>Dataset kendaraan diproses dan dinormalisasi di notebook.</li>
               <li>
-                Model LSTM menghasilkan forecasting beberapa tahun ke depan.
+                <b>Dashboard</b> menampilkan ringkasan total kendaraan, jumlah
+                data, provinsi, dan grafik utama.
               </li>
-              <li>Output CSV diimport ke Supabase.</li>
               <li>
-                Web membaca data Supabase dan menampilkannya sebagai dashboard.
+                <b>Forecasting</b> menampilkan grafik perbandingan data aktual
+                dan data prediksi berdasarkan filter.
+              </li>
+              <li>
+                <b>Data</b> menampilkan seluruh data aktual dan prediksi dalam
+                bentuk tabel.
+              </li>
+              <li>
+                <b>Evaluasi</b> menampilkan nilai MAE, RMSE, dan MAPE untuk
+                membaca performa model.
+              </li>
+              <li>
+                <b>Input</b> digunakan untuk menambahkan data aktual terbaru dan
+                membuat simulasi prediksi pertumbuhan.
               </li>
             </ol>
           </div>
 
           <div className="panel info-panel warm">
-            <span className="section-label">Input Prediksi</span>
-            <h2>Apakah prediksi bisa ada inputan?</h2>
+            <span className="section-label">Cara Membaca Grafik</span>
+            <h2>Aktual dibandingkan prediksi.</h2>
+            <ol className="step-list">
+              <li>Pilih provinsi yang ingin dianalisis.</li>
+              <li>
+                Pilih jenis kendaraan seperti total, mobil, bus, truk, atau
+                motor.
+              </li>
+              <li>
+                Perhatikan garis aktual sebagai data historis dan garis prediksi
+                sebagai perkiraan periode berikutnya.
+              </li>
+              <li>
+                Gunakan tabel data untuk melihat nilai angka secara lebih rinci.
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <section className="content-grid two-column">
+          <div className="panel info-panel">
+            <span className="section-label">Input Data Aktual</span>
+            <h2>Menambahkan data terbaru.</h2>
             <p>
-              Bisa. Di web ini sudah ditambahkan halaman Input Prediksi. Namun
-              input tersebut adalah skenario pertumbuhan yang dihitung dari data
-              aktual terakhir dan disimpan ke tabel prediksi_kendaraan. Untuk
-              menjalankan model LSTM asli dari input web, perlu backend
-              Python/API yang memuat model hasil training.
+              Fitur Tambah Data Aktual digunakan ketika ada data kendaraan baru
+              yang ingin dimasukkan ke sistem. Setelah data disimpan, dashboard
+              dapat menampilkan data terbaru tersebut setelah pengguna memuat
+              ulang data.
+            </p>
+            <ol className="step-list">
+              <li>Isi provinsi dan tahun data aktual.</li>
+              <li>Isi jumlah mobil penumpang, bus, truk, dan sepeda motor.</li>
+              <li>Total kendaraan akan dihitung otomatis oleh sistem.</li>
+              <li>Klik Simpan Data Aktual untuk menyimpan ke database.</li>
+            </ol>
+          </div>
+
+          <div className="panel info-panel warm">
+            <span className="section-label">Simulasi Prediksi</span>
+            <h2>Menghitung skenario pertumbuhan.</h2>
+            <p>
+              Fitur simulasi prediksi digunakan untuk mencoba perkiraan jumlah
+              kendaraan berdasarkan data aktual terakhir. Pengguna hanya memilih
+              provinsi, tahun prediksi, dan persentase pertumbuhan. Nilai mobil,
+              bus, truk, dan sepeda motor dihitung otomatis oleh sistem.
+            </p>
+            <ol className="step-list">
+              <li>Pilih provinsi dari data aktual yang tersedia.</li>
+              <li>Isi tahun prediksi, misalnya 2026 atau 2027.</li>
+              <li>Isi persentase pertumbuhan, misalnya 5%.</li>
+              <li>Klik Hitung Dari Aktual Terakhir.</li>
+              <li>
+                Simpan hasilnya jika ingin ditampilkan di grafik dan tabel.
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <section className="content-grid two-column">
+          <div className="panel info-panel">
+            <span className="section-label">Evaluasi Model</span>
+            <h2>Bagaimana membaca akurasi?</h2>
+            <p>
+              Menu Evaluasi digunakan untuk membaca kualitas model forecasting.
+              Nilai error seperti MAE, RMSE, dan MAPE membantu pengguna melihat
+              seberapa besar selisih antara nilai aktual dan nilai prediksi.
+              Semakin kecil nilai error, semakin baik performa model.
             </p>
           </div>
         </section>
