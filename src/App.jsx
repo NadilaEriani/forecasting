@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import logoImage from "./assets/logo.png";
 import "./App.css";
@@ -361,7 +361,11 @@ function TrendChart({ aktual, prediksi }) {
         {aktual.length > 0 && (
           <>
             <path
-              d={`${buatPath(aktual)} L ${getX(aktual[aktual.length - 1].tahun)} ${height - paddingY} L ${getX(aktual[0].tahun)} ${height - paddingY} Z`}
+              d={`${buatPath(aktual)} L ${getX(
+                aktual[aktual.length - 1].tahun,
+              )} ${height - paddingY} L ${getX(
+                aktual[0].tahun,
+              )} ${height - paddingY} Z`}
               fill="url(#areaAktual)"
             />
             <path d={buatPath(aktual)} className="line-actual" fill="none" />
@@ -380,7 +384,11 @@ function TrendChart({ aktual, prediksi }) {
         {prediksi.length > 0 && (
           <>
             <path
-              d={`${buatPath(prediksi)} L ${getX(prediksi[prediksi.length - 1].tahun)} ${height - paddingY} L ${getX(prediksi[0].tahun)} ${height - paddingY} Z`}
+              d={`${buatPath(prediksi)} L ${getX(
+                prediksi[prediksi.length - 1].tahun,
+              )} ${height - paddingY} L ${getX(
+                prediksi[0].tahun,
+              )} ${height - paddingY} Z`}
               fill="url(#areaPrediksi)"
             />
             <path
@@ -455,20 +463,6 @@ function App() {
   const [savingPrediksi, setSavingPrediksi] = useState(false);
   const [pesan, setPesan] = useState("");
   const [error, setError] = useState("");
-  const posisiScrollInputRef = useRef(0);
-
-  function tahanPosisiScrollInput() {
-    posisiScrollInputRef.current = window.scrollY || window.pageYOffset || 0;
-
-    requestAnimationFrame(() => {
-      const posisiSekarang = window.scrollY || window.pageYOffset || 0;
-      const posisiSebelumnya = posisiScrollInputRef.current;
-
-      if (Math.abs(posisiSekarang - posisiSebelumnya) > 2) {
-        window.scrollTo({ top: posisiSebelumnya, left: 0, behavior: "auto" });
-      }
-    });
-  }
 
   const [filterProvinsi, setFilterProvinsi] = useState("Semua");
   const [filterJenis, setFilterJenis] = useState("total_kendaraan");
@@ -693,19 +687,19 @@ function App() {
 
   function handleFormAktualChange(event) {
     const { name, value } = event.target;
-    tahanPosisiScrollInput();
     setFormAktual((prev) => ({ ...prev, [name]: value }));
   }
 
   function handleFormPrediksiChange(event) {
     const { name, value } = event.target;
-    tahanPosisiScrollInput();
     setFormPrediksi((prev) => ({ ...prev, [name]: value }));
   }
 
-  function isiPrediksiDariAktualTerakhir() {
-    tahanPosisiScrollInput();
+  function handleGrowthPrediksiChange(event) {
+    setGrowthPrediksi(event.target.value);
+  }
 
+  function isiPrediksiDariAktualTerakhir() {
     const provinsiDipilih = String(
       formPrediksi.provinsi || filterProvinsi || "",
     ).trim();
@@ -798,6 +792,7 @@ function App() {
       truk: "",
       sepeda_motor: "",
     });
+
     await ambilData();
     setSavingAktual(false);
   }
@@ -838,6 +833,7 @@ function App() {
       truk: "",
       sepeda_motor: "",
     });
+
     await ambilData();
     setSavingPrediksi(false);
   }
@@ -846,8 +842,9 @@ function App() {
     if (id === halamanAktif) return;
 
     setHalamanAktif(id);
+
     requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "auto" });
     });
   }
 
@@ -1330,6 +1327,7 @@ function App() {
                   value={formAktual.provinsi}
                   onChange={handleFormAktualChange}
                   placeholder="Contoh: Riau"
+                  autoComplete="off"
                   required
                 />
               </label>
@@ -1342,6 +1340,7 @@ function App() {
                   value={formAktual.tahun}
                   onChange={handleFormAktualChange}
                   placeholder="Contoh: 2025"
+                  autoComplete="off"
                   required
                 />
               </label>
@@ -1356,6 +1355,7 @@ function App() {
                     value={formAktual[kolom.name]}
                     onChange={handleFormAktualChange}
                     placeholder="0"
+                    autoComplete="off"
                   />
                 </label>
               ))}
@@ -1389,11 +1389,9 @@ function App() {
                 <input
                   type="number"
                   value={growthPrediksi}
-                  onChange={(event) => {
-                    tahanPosisiScrollInput();
-                    setGrowthPrediksi(event.target.value);
-                  }}
+                  onChange={handleGrowthPrediksiChange}
                   placeholder="5"
+                  autoComplete="off"
                 />
               </label>
               <button type="button" onClick={isiPrediksiDariAktualTerakhir}>
@@ -1412,6 +1410,7 @@ function App() {
                   value={formPrediksi.provinsi}
                   onChange={handleFormPrediksiChange}
                   placeholder="Contoh: Riau"
+                  autoComplete="off"
                   required
                   list="list-provinsi"
                 />
@@ -1425,6 +1424,7 @@ function App() {
                   value={formPrediksi.tahun}
                   onChange={handleFormPrediksiChange}
                   placeholder="Contoh: 2026"
+                  autoComplete="off"
                   required
                 />
               </label>
@@ -1447,6 +1447,7 @@ function App() {
                     value={formPrediksi[kolom.name]}
                     onChange={handleFormPrediksiChange}
                     placeholder="0"
+                    autoComplete="off"
                   />
                 </label>
               ))}
